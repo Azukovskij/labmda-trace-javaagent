@@ -42,7 +42,8 @@ public class LambdaTracer {
             }, Thread.currentThread().getContextClassLoader());
             var configuration = load(loader.getResource("lambdaagent-defaults.properties"));
             for (URL config : Collections.list(loader.getResources("lambdaagent.properties"))) {
-                configuration.putAll(load(config));
+                var overrides = load(config);
+                configuration.replaceAll((k,v) -> merge(v, overrides.get(k)));
             }
             this.lambdaIncludes = parseIncludes(configuration.getProperty("lambda.includes"));
             this.packageIncludes = parseIncludes(configuration.getProperty("package.includes"));
@@ -74,7 +75,7 @@ public class LambdaTracer {
     static void register(Class<?> implClass, Class<?> lambdaType, String lambdaClassName, String agentArgs) {
         var instance = instance();
         var included = instance.isIncluded(implClass, lambdaType, agentArgs);
-        if (Boolean.getBoolean("labmdaagent.debug")) {
+        if (Boolean.getBoolean("lambdaagent.debug")) {
             System.out.println("~~~ " + (included
                 ? "including"
                 : "skipping") + " lambda " + implClass + "@" + lambdaType + " => " + lambdaClassName);
@@ -93,7 +94,7 @@ public class LambdaTracer {
     
     private boolean isIncluded(Class<?> owner, Class<?> lambda, String args) {
         var includesOwner = Stream.concat(packageIncludes.stream(),
-                argLinePackageIncludes.computeIfAbsent(args, k -> parseIncludes(k)).stream())
+                argLinePackageIncludes.computeIfAbsent(args, this::parseIncludes).stream())
             .anyMatch(owner.getName()::startsWith);
         var includesLambda = lambdaIncludes.contains(lambda.getName());
         return includesOwner && includesLambda;
@@ -128,6 +129,16 @@ public class LambdaTracer {
             .flatMap(c -> Arrays.stream(c.split(",")))
             .filter(not(String::isEmpty))
             .collect(Collectors.toUnmodifiableSet());
+    }
+    
+    private Object merge(Object one, Object other) {
+        if (one == null) {
+            return other;
+        }
+        if (other == null) {
+            return one;
+        }
+        return one + "," + other;
     }
 
     /**

@@ -1,19 +1,19 @@
 # Lambda Tracing Java Agent
 
-Java agent that records stack frames for lambda expression, that allows to trace lambda class to a source code line. 
-As all instrumentation happens in labmda class initialisation - this javaagent has has no performance overhead after warmup (with all classes initialised), except ~80 bytes per lambda memory usage. 
+Java agent that records stack frames for lambda expressions, that allows to trace lambda class to a source code line. 
+As all instrumentation happens in lambda class initialisation - this javaagent has no performance overhead after warmup (with all classes initialised), except ~80 bytes per lambda memory usage. 
 
 
 ## Package Includes Cofiguration
-In order for labmda to be traceable owner class package needs to be included into javaagent configuration. This can be done
-via javaagent arguments or by creating `lambdaagent.properties` file within application claspath.
+In order for lambda to be traceable owner class package needs to be included into javaagent configuration. This can be done
+via javaagent arguments or by creating `lambdaagent.properties` file within application classpath.
 
 In order to configure package includes via javaagnet arguments simply pass comma separate package names to `-javaagent` option, e.g.
 ```
 -javaagent:/path/to/lambda-javaagent.jar:com.package.a,com.package.b
 ```
 
-Alternatively create `lambdaagent.properties` in application path and pass `package.includes`, e.g.
+Alternatively create `lambdaagent.properties` in application classpath and pass `package.includes`, e.g.
 ```
 package.includes=com.package.a,com.package.b
 ```
@@ -50,9 +50,9 @@ lambda.includes=com.my.CustomFunc1,com.my.CustomFunc2
 ```
 
 ### Verbose Logging
-Lambda includes can configured to be sent to system out using `labmdaagent.debug` system property, e.g.:
+Lambda includes can configured to be sent to system out using `lambdaagent.debug` system property, e.g.:
 ```
--Dlabmdaagent.debug=true
+-Dlambdaagent.debug=true
 ```
 will produce `included` or `excluded` message upon lambda class initialisation:
 ```
@@ -62,7 +62,7 @@ will produce `included` or `excluded` message upon lambda class initialisation:
 
 ## Usage example
 
-In order to collect exception count JMX metrics, attach javaagent (from releases section) to java application:
+In order to collect lambda traces, attach javaagent (from releases section) to java application:
 
 ```bash
 -javaagent:/path/to/lambda-javaagent.jar:com.mypackage
@@ -75,3 +75,4 @@ After javaagent is attached lambda classes can be traced by invoking `LambdaTrac
    var method = clazz.getDeclaredMethod("trace", Class.class);
    return method.invoke(instance, lambdaClazz);
 ```
+Example above will return optional of `StackFrame` element pointing to lambda location in the source code or optional empty if lambda is not included for tracing.

@@ -10,6 +10,7 @@ import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -27,10 +28,9 @@ import java.util.stream.Stream;
 public class LambdaTracer {
     
     private static final LambdaTracer INSTANCE = new LambdaTracer();
-    private static final String LAMBDA_PREFIX = "$$Lambda$";
-    private static final char LAMBDA_POSTFIX = '/';
+    private static final String LAMBDA_PREFIX = "$$Lambda";
     
-    private final Map<TraceKey, StackFrame> traces = new ConcurrentHashMap<>();
+    private final Map<TraceKey, Entry<String, StackFrame>> traces = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> argLinePackageIncludes = new ConcurrentHashMap<>();
     private final Set<String> lambdaIncludes;
     private final Set<String> packageIncludes;
@@ -61,7 +61,8 @@ public class LambdaTracer {
     
     public Optional<StackFrame> trace(Class<?> lambdaType) {
         return Optional.ofNullable(key(lambdaType))
-            .map(traces::get);
+            .map(traces::get)
+            .map(Entry::getValue);
     }
     
     /**
@@ -69,16 +70,16 @@ public class LambdaTracer {
      * 
      * @param implClass class that declares lambda 
      * @param lambdaType lambda interfaces 
-     * @param lambdaClassName lambda class name
+     * @param lambdaClass lambda class name
      * @param agentArgs agent configuration, comma separated list of packages to include
      */
-    static void register(Class<?> implClass, Class<?> lambdaType, String lambdaClassName, String agentArgs) {
+    static void register(Class<?> implClass, Class<?> lambdaType, Class<?> lambdaClass, String agentArgs) {
         var instance = instance();
         var included = instance.isIncluded(implClass, lambdaType, agentArgs);
         if (Boolean.getBoolean("lambdaagent.debug")) {
             System.out.println("~~~ " + (included
                 ? "including"
-                : "skipping") + " lambda " + implClass + "@" + lambdaType + " => " + lambdaClassName);
+                : "skipping") + " lambda " + implClass + "@" + lambdaType + " => " + lambdaClass);
         }
         if (!included) {
             return;
@@ -88,7 +89,7 @@ public class LambdaTracer {
             .dropWhile(f -> f.getClassName().startsWith("java") 
                 || f.getClassName().startsWith("net.bytebuddy"))
             .findFirst())
-            .ifPresent(f -> instance.traces.put(key(implClass, lambdaClassName), f));
+            .ifPresent(f -> instance.traces.put(key(lambdaClass), Map.entry(f.toString(), f)));
         
     }
     
@@ -100,17 +101,12 @@ public class LambdaTracer {
         return includesOwner && includesLambda;
     }
     
-    private static TraceKey key(Class<?> owner, String lambdaName) {
-        return new TraceKey(owner, lambdaName.substring(lambdaName.indexOf(LAMBDA_PREFIX)));
-    }
-    
-    
-    private TraceKey key(Class<?> lambdaClass) {
+    private static TraceKey key(Class<?> lambdaClass) {
         try {
             var lambda = lambdaClass.getName();
             var owner = lambdaClass.getName().substring(0, lambda.indexOf(LAMBDA_PREFIX));
             var classLoader = lambdaClass.getClassLoader();
-            return new TraceKey(classLoader.loadClass(owner), lambda.substring(owner.length(), lambda.indexOf(LAMBDA_POSTFIX)));
+            return new TraceKey(classLoader.loadClass(owner), lambda.substring(owner.length()));
         } catch (ClassNotFoundException e) {
             return null;
         }

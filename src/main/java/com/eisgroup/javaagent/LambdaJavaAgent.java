@@ -6,6 +6,7 @@ import java.lang.StackWalker.StackFrame;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Optional;
 
@@ -46,7 +47,7 @@ public class LambdaJavaAgent {
                     .withCustomMapping()
                     .bind(AgentArgs.class, Optional.ofNullable(agentArgs)
                         .orElse(NULL_ARGS))
-                    .to(LambdaJavaAgent.Interceptor.class).on(named("buildCallSite")))
+                    .to(LambdaJavaAgent.Interceptor.class).on(named("spinInnerClass")))
                 .make()
                 .load(factory.getClassLoader(), ClassReloadingStrategy.of(instrumentation));
             
@@ -65,6 +66,7 @@ public class LambdaJavaAgent {
      */
     @Retention(RetentionPolicy.RUNTIME)
     public @interface AgentArgs {}
+    
 
     /**
      * Byte buddy interceptor that invokes {@link LambdaTracer#register(Class, Class, String, String)} on lambda class init  
@@ -74,26 +76,36 @@ public class LambdaJavaAgent {
      */
     public static class Interceptor {
 
-        @Advice.OnMethodEnter(suppress = Throwable.class)
+        @Advice.OnMethodExit(suppress = Throwable.class)
         public static void intercept(
-                @Advice.FieldValue("implClass") Class<?> implClass,
-                @Advice.FieldValue("samBase") Class<?> samBase,
-                @Advice.FieldValue("lambdaClassName") String lambdaClassName,
+                @Advice.This Object source,
+                @Advice.FieldValue(value = "implClass") Class<?> implClass,
+                @Advice.Return Class<?> lambdaClass,
                 @AgentArgs String agentArgs) throws Exception {
             var callerName = implClass.getName();
             if (callerName.startsWith("com.eisgroup.javaagent.LambdaTracer")  // recursion
                      || callerName.startsWith("java.") || callerName.startsWith("jdk.") || callerName.startsWith("sun.")) {
                 return;
             }
+            var f = (Field) null;
+            var factoryClazz = source.getClass().getSuperclass();
+            try {
+                f = factoryClazz.getDeclaredField("samBase");
+                f.setAccessible(true);
+            } catch (ReflectiveOperationException e) {
+                f = factoryClazz.getDeclaredField("interfaceClass");
+                f.setAccessible(true);
+            }
+            var samBase = (Class<?>) f.get(source);
             var props = System.getProperties();
             var method = (Method) props.get("LambdaTracer$RegisterMethod");
             if (method == null) {
                 var clazz = Class.forName("com.eisgroup.javaagent.LambdaTracer", true, ClassLoader.getSystemClassLoader());
-                method = clazz.getDeclaredMethod("register", Class.class, Class.class, String.class, String.class);
+                method = clazz.getDeclaredMethod("register", Class.class, Class.class, Class.class, String.class);
                 method.setAccessible(true);
                 props.putIfAbsent("LambdaTracer$RegisterMethod", method);
             }
-            method.invoke(null, implClass, samBase, lambdaClassName, agentArgs);
+            method.invoke(null, implClass, samBase, lambdaClass, agentArgs);
         }
         
     }

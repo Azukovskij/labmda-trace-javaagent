@@ -4,7 +4,7 @@
 
     <groupId>com.eisgroup.javaagent</groupId>
     <artifactId>lambda-javaagent</artifactId>
-    <version>0.0.3-SNAPSHOT</version>
+    <version>0.0.3</version>
     <packaging>jar</packaging>
 
     <prerequisites>

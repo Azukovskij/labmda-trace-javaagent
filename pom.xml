@@ -4,7 +4,7 @@
 
     <groupId>com.eisgroup.javaagent</groupId>
     <artifactId>lambda-javaagent</artifactId>
-    <version>0.0.3</version>
+    <version>0.0.4</version>
     <packaging>jar</packaging>
 
     <prerequisites>
@@ -21,12 +21,12 @@
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy-agent</artifactId>
-            <version>1.14.10</version>
+            <version>1.17.7</version>
         </dependency>
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
-            <version>1.14.10</version>
+            <version>1.17.7</version>
         </dependency>
     </dependencies>
 

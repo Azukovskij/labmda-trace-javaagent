@@ -76,3 +76,14 @@ After javaagent is attached lambda classes can be traced by invoking `LambdaTrac
    return method.invoke(instance, lambdaClazz);
 ```
 Example above will return optional of `StackFrame` element pointing to lambda location in the source code or optional empty if lambda is not included for tracing.
+
+## Lambdas created before the agent started (JDK AOT cache, dynamic attach)
+Lambda classes the agent didn't see being created are resolved from bytecode when `LambdaTracer.trace` is called: the
+implementation method is read from the lambda class constant pool, the location from the `invokedynamic` instructions
+of the declaring class. This covers lambdas linked from a JDK AOT cache (`-XX:AOTCache`, JDK 24+), which are created
+at JVM start before `premain`, and lambdas created before the agent was attached.
+* The same include rules apply as for lambdas traced at creation.
+* When the same method reference (same target, functional interface and captured types) is used several times in one
+class, the first location is reported for all of them.
+* This uses the JDK internal constant pool API. If it is not available, the agent prints
+`WARNING: lambda-javaagent: ...` once and traces only the lambdas it saw being created.

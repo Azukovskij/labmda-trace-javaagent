@@ -29,8 +29,10 @@ public class LambdaTracer {
     
     private static final LambdaTracer INSTANCE = new LambdaTracer();
     private static final String LAMBDA_PREFIX = "$$Lambda";
-    
+    private static volatile String defaultAgentArgs = "";
+
     private final Map<TraceKey, Entry<String, StackFrame>> traces = new ConcurrentHashMap<>();
+    private final Set<TraceKey> unresolved = ConcurrentHashMap.newKeySet();
     private final Map<String, Set<String>> argLinePackageIncludes = new ConcurrentHashMap<>();
     private final Set<String> lambdaIncludes;
     private final Set<String> packageIncludes;
@@ -60,9 +62,38 @@ public class LambdaTracer {
     }
     
     public Optional<StackFrame> trace(Class<?> lambdaType) {
-        return Optional.ofNullable(key(lambdaType))
-            .map(traces::get)
-            .map(Entry::getValue);
+        var key = key(lambdaType);
+        if (key == null) {
+            return Optional.empty();
+        }
+        var trace = traces.get(key);
+        if (trace == null && !unresolved.contains(key)) {
+            // not recorded when spun, e.g. linked from a JDK AOT cache or created before the agent attached
+            trace = StaticLambdaSites.resolve(lambdaType, key.owner)
+                .filter(site -> !isSkipped(site.implClass())
+                    && isIncluded(site.implClass(), site.lambdaType(), defaultAgentArgs))
+                .map(site -> Map.entry(site.frame().toString(), site.frame()))
+                .orElse(null);
+            if (trace == null) {
+                unresolved.add(key);
+            } else {
+                traces.putIfAbsent(key, trace);
+            }
+        }
+        return Optional.ofNullable(trace).map(Entry::getValue);
+    }
+
+    /**
+     * @param agentArgs javaagent arguments, used for lambdas resolved from bytecode
+     */
+    static void agentArgs(String agentArgs) {
+        defaultAgentArgs = agentArgs;
+    }
+
+    private static boolean isSkipped(String implClass) {
+        // same as LambdaJavaAgent.Interceptor
+        return implClass.startsWith("com.eisgroup.javaagent.LambdaTracer")
+            || implClass.startsWith("java.") || implClass.startsWith("jdk.") || implClass.startsWith("sun.");
     }
     
     /**
@@ -75,7 +106,7 @@ public class LambdaTracer {
      */
     static void register(Class<?> implClass, Class<?> lambdaType, Class<?> lambdaClass, String agentArgs) {
         var instance = instance();
-        var included = instance.isIncluded(implClass, lambdaType, agentArgs);
+        var included = instance.isIncluded(implClass.getName(), lambdaType.getName(), agentArgs);
         if (Boolean.getBoolean("lambdaagent.debug")) {
             System.out.println("~~~ " + (included
                 ? "including"
@@ -93,11 +124,11 @@ public class LambdaTracer {
         
     }
     
-    private boolean isIncluded(Class<?> owner, Class<?> lambda, String args) {
+    private boolean isIncluded(String owner, String lambda, String args) {
         var includesOwner = Stream.concat(packageIncludes.stream(),
                 argLinePackageIncludes.computeIfAbsent(args, this::parseIncludes).stream())
-            .anyMatch(owner.getName()::startsWith);
-        var includesLambda = lambdaIncludes.contains(lambda.getName());
+            .anyMatch(owner::startsWith);
+        var includesLambda = lambdaIncludes.contains(lambda);
         return includesOwner && includesLambda;
     }
     

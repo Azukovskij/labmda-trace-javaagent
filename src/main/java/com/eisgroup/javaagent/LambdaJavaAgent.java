@@ -39,6 +39,9 @@ public class LambdaJavaAgent {
     }
     
     private static void instrument(String agentArgs, Instrumentation instrumentation) {
+        // lambdas linked before the agent started (e.g. from a JDK AOT cache) are resolved from bytecode on trace
+        LambdaTracer.agentArgs(Optional.ofNullable(agentArgs).orElse(NULL_ARGS));
+        StaticLambdaSites.open(instrumentation);
         try {
             var byteBuddy = new ByteBuddy();
             var factory = Class.forName("java.lang.invoke.InnerClassLambdaMetafactory");
